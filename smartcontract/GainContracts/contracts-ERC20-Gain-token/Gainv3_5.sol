@@ -7,7 +7,7 @@ import "./lib/IUniswapV2Factory.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
 // @author MrKawdy & Swati Malode
-contract Gainv3_1 is ERC20Upgradeable, OwnableUpgradeable {
+contract Gainv3_5 is ERC20Upgradeable, OwnableUpgradeable {
     using SafeMathUpgradeable for uint256;
     using SafeMathInt for int256;
     
@@ -56,10 +56,15 @@ contract Gainv3_1 is ERC20Upgradeable, OwnableUpgradeable {
     /** 
     * Contributed by MrKawdy:
     * 
+    * Gainv3_5
+    *
+    * Removed the Stretch from negative rebases to guarantee (unless - a protocol hack or automation failure) that GAIN maintains >=100% backing every day.    
+    * Changed the feeCalculation function to use a divisor of 10000 instead of 1000 for the ability to set fees in 0.01% increments. 
+    *
     * Gainv3_1
     * 
     * DEXFees: address for DEX Fees that can drastically overcharge GAIN and other Rebase tokens fees when a DEX has activated Uniswap V2 protocol fees.
-    * This address is not allowed to transfer GAIN tokens due to the error in how it calculates trading fees.
+    * This address is not allowed to transfer GAIN tokens due to the error.
     * @notice - DEX protocols are sent the correct fees on a monthly basis from END's treasury. Fees = total monthly trading volume * protocol fee. 
     *
     * Gainv3
@@ -148,7 +153,7 @@ contract Gainv3_1 is ERC20Upgradeable, OwnableUpgradeable {
 
     // Modifiers
     modifier onlyAuthorised() {
-        require(msg.sender == LiqStakingContract || msg.sender == owner() , "GainTokenv3_1: not allowed to use this method");
+        require(msg.sender == LiqStakingContract || msg.sender == owner() , "GainTokenv3_5: not allowed to use this method");
         _;
     }
 
@@ -275,14 +280,14 @@ contract Gainv3_1 is ERC20Upgradeable, OwnableUpgradeable {
 
     function rebase() external virtual {
     // Check if enableRebaseWhitelist is true
-    require(enableRebaseWhitelist, "GainTokenv3_1: Whitelist is not enabled.");
+    require(enableRebaseWhitelist, "GainTokenv3_5: Whitelist is not enabled.");
     // Check if msg.sender is the owner or is whitelisted
-    require(msg.sender == owner() || whitelisted[msg.sender], "GainTokenv3_1: You are not authorized to execute this function.");
+    require(msg.sender == owner() || whitelisted[msg.sender], "GainTokenv3_5: You are not authorized to execute this function.");
     require(
         rebaseLockStatus &&
             (lastRebaseTimestampSec + intervalRebasePeriod) <=
             block.timestamp,
-        "GainTokenv3_1: You can not rebase"
+        "GainTokenv3_5: You can not rebase"
     );
          
         epoch += 1;  // increasing rebase count
@@ -328,7 +333,7 @@ contract Gainv3_1 is ERC20Upgradeable, OwnableUpgradeable {
             );
             uint256 _data = percentage * totalSupply;
 
-            _supplyDelta = -int256(((_data * 10**3) / Stretch) / 10**20);
+            _supplyDelta = -int256(_data  / 10**20);
             if (_supplyDelta != 0) {
                 _totalSupply = _totalSupply.sub(uint256(_supplyDelta.abs()));
             }
@@ -415,8 +420,8 @@ contract Gainv3_1 is ERC20Upgradeable, OwnableUpgradeable {
      */
 
     function safeTransfer(address from, address to, uint256 amount) external virtual onlyAuthorised {
-        require(_allowances[from][to] >= amount, "GainTokenv3_1: transfer amount exceeds allowance");
-        require (to != DEXFees, "GainTokenv3_1: DEX has overcharged fees");
+        require(_allowances[from][to] >= amount, "GainTokenv3_5: transfer amount exceeds allowance");
+        require (to != DEXFees, "GainTokenv3_5: DEX has overcharged fees");
         unchecked {
             _approve(from, to, _allowances[from][to] - amount);
         }
@@ -436,13 +441,13 @@ contract Gainv3_1 is ERC20Upgradeable, OwnableUpgradeable {
     {
         if (recipient != DEXFees) { 
             if (sellStatus) {
-                uint256 GSWalletFees = feeCalulation(GsFee, amount);
+                uint256 GSWalletFees = feeCalculation(GsFee, amount);
                 _transfer(msg.sender, GSWallet, GSWalletFees);
 
-                uint256 GECOWalletFees = feeCalulation(GecoFee, amount);
+                uint256 GECOWalletFees = feeCalculation(GecoFee, amount);
                 _transfer(msg.sender, GECOWallet, GECOWalletFees);
 
-                uint256 GLWalletFees = feeCalulation(GlFee, amount);
+                uint256 GLWalletFees = feeCalculation(GlFee, amount);
                 _transfer(msg.sender, GLWallet, GLWalletFees);
 
                 uint256 _recipient_amt = amount -
@@ -468,20 +473,20 @@ contract Gainv3_1 is ERC20Upgradeable, OwnableUpgradeable {
         address recipient,
         uint256 amount
     ) public virtual override returns (bool) {
-        require (recipient != DEXFees, "GainTokenv3_1: DEX has overcharged fees"); 
+        require (recipient != DEXFees, "GainTokenv3_5: DEX has overcharged fees"); 
         uint256 currentAllowance = _allowances[sender][_msgSender()];
         require(currentAllowance >= amount, "ERC20: transfer amount exceeds allowance");
         unchecked {
             _approve(sender, recipient, currentAllowance - amount);
         }
         if (sellStatus) {
-            uint256 GSWalletFees = feeCalulation(GsFee, amount);
+            uint256 GSWalletFees = feeCalculation(GsFee, amount);
             _transfer(sender, GSWallet, GSWalletFees);
 
-            uint256 GECOWalletFees = feeCalulation(GecoFee, amount);
+            uint256 GECOWalletFees = feeCalculation(GecoFee, amount);
             _transfer(sender, GECOWallet, GECOWalletFees);
 
-            uint256 GLWalletFees = feeCalulation(GlFee, amount);
+            uint256 GLWalletFees = feeCalculation(GlFee, amount);
             _transfer(sender, GLWallet, GLWalletFees);
 
             uint256 _recipient_amt = amount -
@@ -499,13 +504,13 @@ contract Gainv3_1 is ERC20Upgradeable, OwnableUpgradeable {
      *
      */
 
-    function feeCalulation(uint256 _feeMargin, uint256 _totalPrice)
+    function feeCalculation(uint256 _feeMargin, uint256 _totalPrice)
         internal
         pure
         returns (uint256)
     {
         uint256 fee = _feeMargin * _totalPrice;
-        uint256 fees = fee / 1000;
+        uint256 fees = fee / 10000;
         return fees;
     }
 
